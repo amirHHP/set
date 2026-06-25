@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useState } from 'react';
-import { setSystemSetting } from '@/app/actions/settings';
+import { useState, useEffect } from 'react';
+import { setSystemSetting, fetchAvailableGeminiModels } from '@/app/actions/settings';
 import { addProductAction, deleteProductAction, ProductData } from '@/app/actions/shop';
 import { listUsersAction, deleteUserAction, PublicUser } from '@/app/actions/auth';
 import { Key, ShoppingBag, Users, Plus, Trash2, ShieldAlert, Sparkles, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
@@ -25,6 +26,40 @@ export default function AdminPanelClient({
   const [aiSaveSuccess, setAiSaveSuccess] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiSaving, setAiSaving] = useState(false);
+
+  // Dynamic Models State
+  const [fetchedModels, setFetchedModels] = useState<any[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchModelsError, setFetchModelsError] = useState('');
+
+  const handleFetchModels = async () => {
+    setFetchingModels(true);
+    setFetchModelsError('');
+    try {
+      const res = await fetchAvailableGeminiModels();
+      if (res.success && res.models) {
+        setFetchedModels(res.models);
+      } else {
+        setFetchModelsError(res.error || 'خطا در دریافت لیست مدل‌ها.');
+      }
+    } catch (err) {
+      console.error('Error fetching models:', err);
+      setFetchModelsError('خطا در ارتباط با سرور.');
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  useEffect(() => {
+    if (initialAiConfig.apiKey) {
+      // Small timeout to allow render and setup stability
+      const timer = setTimeout(() => {
+        handleFetchModels();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Products State
   const [products, setProducts] = useState<ProductData[]>(initialProducts);
@@ -300,11 +335,21 @@ export default function AdminPanelClient({
                   onChange={(e) => setModel(e.target.value)}
                   style={{ background: '#181b24', color: 'white', direction: 'ltr' }}
                 >
-                  <option value="gemini-2.0-flash">models/gemini-2.0-flash (سریع و بهینه‌ترین)</option>
-                  <option value="gemini-2.0-flash-lite">models/gemini-2.0-flash-lite (بسیار سریع و سبک)</option>
-                  <option value="gemini-1.5-flash">models/gemini-1.5-flash</option>
-                  <option value="gemini-1.5-pro">models/gemini-1.5-pro (دقیق و تحلیلیتر)</option>
-                  <option value="gemini-2.5-pro-preview-05-06">models/gemini-2.5-pro-preview-05-06 (مدل فکرکننده هوشمند)</option>
+                  {fetchedModels.length > 0 ? (
+                    fetchedModels.map((m) => (
+                      <option key={m.name} value={m.name.replace('models/', '')}>
+                        {m.displayName} ({m.name})
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="gemini-2.0-flash">models/gemini-2.0-flash (سریع و بهینه‌ترین)</option>
+                      <option value="gemini-2.0-flash-lite">models/gemini-2.0-flash-lite (بسیار سریع و سبک)</option>
+                      <option value="gemini-1.5-flash">models/gemini-1.5-flash</option>
+                      <option value="gemini-1.5-pro">models/gemini-1.5-pro (دقیق و تحلیلیتر)</option>
+                      <option value="gemini-2.5-pro-preview-05-06">models/gemini-2.5-pro-preview-05-06 (مدل فکرکننده هوشمند)</option>
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -318,6 +363,162 @@ export default function AdminPanelClient({
                 <span>{aiSaving ? 'در حال ذخیره‌سازی...' : 'ذخیره کلید و مدل هوش مصنوعی'}</span>
               </button>
             </form>
+
+            {/* List and display Gemini Models with rate limits */}
+            <div style={{ marginTop: '30px', borderTop: '1px solid var(--border)', paddingTop: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--secondary)', margin: 0 }}>
+                  <Sparkles size={18} />
+                  <span>بررسی مدل‌ها و محدودیت‌ها (Rate Limits)</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={handleFetchModels}
+                  className="btn btn-secondary"
+                  style={{ padding: '6px 14px', fontSize: '0.8rem', gap: '6px' }}
+                  disabled={fetchingModels || !apiKey}
+                >
+                  <RefreshCw 
+                    size={14} 
+                    className={fetchingModels ? 'animate-spin' : ''} 
+                    style={{ animation: fetchingModels ? 'spin 1s linear infinite' : 'none' }} 
+                  />
+                  <span>{fetchingModels ? 'در حال استعلام...' : 'بروزرسانی لیست مدل‌ها'}</span>
+                </button>
+              </div>
+
+              {!apiKey && (
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
+                  برای مشاهده لیست مدل‌های متصل به کلید شما و نرخ محدودیت (Rate Limit) آن‌ها، ابتدا کلید API بالا را وارد و ذخیره کنید.
+                </p>
+              )}
+
+              {fetchModelsError && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  padding: '12px',
+                  borderRadius: '10px',
+                  color: '#ef4444',
+                  fontSize: '0.85rem',
+                  marginBottom: '16px'
+                }}>
+                  <AlertCircle size={16} />
+                  <span>{fetchModelsError}</span>
+                </div>
+              )}
+
+              {fetchedModels.length > 0 && (
+                <div style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  gap: '12px', 
+                  maxHeight: '350px', 
+                  overflowY: 'auto', 
+                  paddingLeft: '4px',
+                  marginTop: '12px'
+                }}>
+                  {fetchedModels.map((m) => {
+                    const isCurrent = model === m.name || model === m.name.replace('models/', '');
+                    return (
+                      <div key={m.name} style={{
+                        background: 'rgba(255,255,255,0.02)',
+                        border: isCurrent ? '1px solid var(--primary)' : '1px solid var(--border)',
+                        padding: '14px',
+                        borderRadius: '12px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'start',
+                        flexWrap: 'wrap',
+                        gap: '12px'
+                      }}>
+                        <div style={{ flex: '1 1 300px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                            <strong style={{ fontSize: '0.95rem', color: isCurrent ? 'var(--primary)' : 'var(--text-main)' }}>
+                              {m.displayName}
+                            </strong>
+                            <code style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: '4px', direction: 'ltr' }}>
+                              {m.name}
+                            </code>
+                            {isCurrent && (
+                              <span className="badge badge-primary" style={{ fontSize: '0.65rem', padding: '2px 6px' }}>
+                                فعال پیش‌فرض
+                              </span>
+                            )}
+                          </div>
+                          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, lineHeight: '1.6' }}>
+                            {m.description}
+                          </p>
+                          
+                          {/* Token limits */}
+                          <div style={{ display: 'flex', gap: '16px', marginTop: '8px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            <span>حداکثر توکن ورودی: <strong>{(m.inputTokenLimit).toLocaleString('fa-IR')}</strong></span>
+                            <span>حداکثر توکن خروجی: <strong>{(m.outputTokenLimit).toLocaleString('fa-IR')}</strong></span>
+                          </div>
+                        </div>
+
+                        {/* Rate limits details info */}
+                        <div style={{
+                          background: 'rgba(0,0,0,0.2)',
+                          border: '1px solid var(--border)',
+                          padding: '10px 14px',
+                          borderRadius: '8px',
+                          fontSize: '0.85rem',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px',
+                          minWidth: '160px'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', direction: 'ltr' }}>
+                            <span style={{ color: 'var(--text-muted)' }}>RPM (در دقیقه):</span>
+                            <strong style={{ color: 'var(--secondary)' }}>{m.rateLimits.rpm}</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', direction: 'ltr' }}>
+                            <span style={{ color: 'var(--text-muted)' }}>TPM (توکن/دقیقه):</span>
+                            <strong style={{ color: 'var(--secondary)' }}>{m.rateLimits.tpm}</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', direction: 'ltr' }}>
+                            <span style={{ color: 'var(--text-muted)' }}>RPD (در روز):</span>
+                            <strong style={{ color: 'var(--secondary)' }}>{m.rateLimits.rpd}</strong>
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px', textAlign: 'right', direction: 'rtl' }}>
+                            وضعیت: {m.rateLimits.note}
+                          </div>
+                          
+                          {/* Set active model */}
+                          {!isCurrent && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const cleanName = m.name.replace('models/', '');
+                                setModel(cleanName);
+                              }}
+                              className="btn btn-secondary"
+                              style={{ 
+                                width: '100%', 
+                                padding: '4px 8px', 
+                                fontSize: '0.75rem', 
+                                marginTop: '8px', 
+                                border: '1px solid var(--primary)', 
+                                color: 'var(--primary)', 
+                                background: 'none',
+                                cursor: 'pointer',
+                                transition: 'var(--transition)'
+                              }}
+                            >
+                              انتخاب به عنوان پیش‌فرض
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

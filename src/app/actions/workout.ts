@@ -5,6 +5,20 @@ import prisma from '@/lib/prisma';
 import { getCurrentUser } from './auth';
 import { callGeminiApi } from '@/lib/ai';
 
+function cleanJsonString(str: string): string {
+  let cleaned = str.trim();
+  
+  // Remove markdown code fences if present
+  if (cleaned.startsWith('```')) {
+    const match = cleaned.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+    if (match) {
+      cleaned = match[1].trim();
+    }
+  }
+  
+  return cleaned;
+}
+
 export interface Exercise {
   id: string;
   name: string;
@@ -133,9 +147,11 @@ export async function generateWorkoutProgramAction(data: {
       return { success: false, error: `خطا در برقراری ارتباط با هوش مصنوعی: ${aiErr.message || 'لطفاً بعداً تلاش کنید'}` };
     }
 
+    const cleanedJson = cleanJsonString(generatedJson);
+
     // Validate if JSON is parseable
     try {
-      JSON.parse(generatedJson);
+      JSON.parse(cleanedJson);
     } catch (parseErr) {
       console.error('Invalid JSON returned by Gemini:', generatedJson, parseErr);
       return { success: false, error: 'یافته‌های دریافت شده از هوش مصنوعی قالب معتبری نداشتند. لطفاً مجدداً امتحان کنید.' };
@@ -151,7 +167,7 @@ export async function generateWorkoutProgramAction(data: {
     const newProg = await prisma.workoutProgram.create({
       data: {
         userId: currentUser.id,
-        programJson: generatedJson,
+        programJson: cleanedJson,
         isActive: true
       }
     });
@@ -177,7 +193,7 @@ export async function getWorkoutLogs(): Promise<{ success: boolean; logs?: Worko
 
     return {
       success: true,
-      logs: logs.map(l => ({
+      logs: logs.map((l: any) => ({
         id: l.id,
         programId: l.programId,
         date: l.date,
