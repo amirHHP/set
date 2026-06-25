@@ -8,11 +8,10 @@ import {
   getWorkoutLogs,
   saveWorkoutLogAction,
   WorkoutProgramData,
-  WorkoutLogData,
-  Exercise
+  WorkoutLogData
 } from '@/app/actions/workout';
 import { getCurrentUser, PublicUser } from '@/app/actions/auth';
-import { Dumbbell, Plus, CheckCircle, Calendar, Sparkles, RefreshCw, AlertCircle, Play, Check } from 'lucide-react';
+import { Dumbbell, CheckCircle, Calendar, Sparkles, RefreshCw, AlertCircle, Play, Check } from 'lucide-react';
 
 export default function WorkoutPage() {
   const router = useRouter();
@@ -82,6 +81,7 @@ export default function WorkoutPage() {
         setError(res.error || 'خطا در ساخت برنامه تمرینی.');
       }
     } catch (err) {
+      console.error('Error generating program:', err);
       setError('خطا در برقراری ارتباط با سرور.');
     } finally {
       setGenerating(false);
@@ -137,6 +137,7 @@ export default function WorkoutPage() {
         setError(res.error || 'خطا در ذخیره‌سازی لاگ.');
       }
     } catch (e) {
+      console.error('Error saving workout log:', e);
       setError('خطا در اتصال به سرور.');
     } finally {
       setSavingLog(false);

@@ -53,6 +53,7 @@ export default function AdminPanelClient({
         setUsersError(res.error || 'خطا در بارگذاری کاربران.');
       }
     } catch (e) {
+      console.error('Error loading users:', e);
       setUsersError('خطا در اتصال به سرور.');
     } finally {
       setUsersLoading(false);
@@ -76,6 +77,7 @@ export default function AdminPanelClient({
         setAiError(resKey.error || resModel.error || 'خطا در ثبت تنظیمات.');
       }
     } catch (e) {
+      console.error('Error saving AI config:', e);
       setAiError('خطا در ارتباط با سرور.');
     } finally {
       setAiSaving(false);
@@ -118,6 +120,7 @@ export default function AdminPanelClient({
         setProdError(res.error || 'خطا در افزودن محصول.');
       }
     } catch (e) {
+      console.error('Error adding product:', e);
       setProdError('خطا در ارتباط با سرور.');
     } finally {
       setProdAdding(false);
@@ -135,6 +138,7 @@ export default function AdminPanelClient({
         alert(res.error || 'خطا در حذف محصول.');
       }
     } catch (e) {
+      console.error('Error deleting product:', e);
       alert('خطا در ارتباط با سرور.');
     }
   };
@@ -150,6 +154,7 @@ export default function AdminPanelClient({
         alert(res.error || 'خطا در حذف کاربر.');
       }
     } catch (e) {
+      console.error('Error deleting user:', e);
       alert('خطا در ارتباط با سرور.');
     }
   };

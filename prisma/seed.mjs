@@ -29,7 +29,7 @@ async function main() {
   // 2. Create default users
   const adminSalt = generateSalt()
   const adminHash = hashPassword('admin123', adminSalt)
-  const admin = await prisma.user.create({
+  await prisma.user.create({
     data: {
       name: 'مدیریت سیستم',
       username: 'admin',
@@ -42,7 +42,7 @@ async function main() {
 
   const userSalt = generateSalt()
   const userHash = hashPassword('sara123', userSalt)
-  const user = await prisma.user.create({
+  await prisma.user.create({
     data: {
       name: 'سارا احمدی',
       username: 'sara',

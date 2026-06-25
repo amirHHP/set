@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { loginAction, registerAction } from '@/app/actions/auth';
 import { LogIn, UserPlus, AlertCircle } from 'lucide-react';
-import Link from 'next/link';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -39,6 +38,7 @@ export default function LoginPage() {
         }
       }
     } catch (err) {
+      console.error(err);
       setError('ارتباط با سرور برقرار نشد.');
     } finally {
       setLoading(false);

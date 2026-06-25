@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { logBodySizesAction, getBodySizes, deleteBodySizeAction, BodySizeData } from '@/app/actions/sizes';
 import { getCurrentUser, PublicUser } from '@/app/actions/auth';
-import { Scale, Plus, Trash2, Calendar, Sparkles, Image as ImageIcon, AlertCircle, ArrowUpRight, ArrowDownRight, TrendingUp } from 'lucide-react';
+import { Scale, Trash2, Calendar, Sparkles, Image as ImageIcon, AlertCircle, ArrowUpRight, ArrowDownRight, TrendingUp } from 'lucide-react';
 
 export default function SizesPage() {
   const router = useRouter();
@@ -96,6 +96,7 @@ export default function SizesPage() {
         setError(res.error || 'خطا در ثبت اندازه‌ها.');
       }
     } catch (err) {
+      console.error('Error logging body sizes:', err);
       setError('خطا در ارتباط با سرور.');
     } finally {
       setSubmitting(false);
@@ -111,6 +112,7 @@ export default function SizesPage() {
         setSizes(sizes.filter(s => s.id !== id));
       }
     } catch (err) {
+      console.error('Error deleting body size:', err);
       alert('خطا در حذف رکورد.');
     }
   };

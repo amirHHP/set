@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/app/actions/auth';
 import AdminPanelClient from '@/components/AdminPanelClient';
-import { getAiConfig, getSystemSetting } from '@/app/actions/settings';
+import { getAiConfig } from '@/app/actions/settings';
 import { getProducts } from '@/app/actions/shop';
 
 export default async function AdminPage() {
