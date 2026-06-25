@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String           @id @default(uuid())
+  name         String
+  username     String           @unique
+  passwordHash String
+  salt         String
+  role         String           @default("user") // "admin" or "user"
+  createdAt    DateTime         @default(now())
+
+  // Relations
+  sizes        BodySize[]
+  programs     WorkoutProgram[]
+  logs         WorkoutLog[]
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  description String
+  price       Int
+  image       String   // Base64 or image URL
+  category    String   // "supplement" | "equipment" | "clothing"
+  createdAt   DateTime @default(now())
+}
+
+model BodySize {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weight      Float    // kg
+  waist       Float    // cm
+  hips        Float    // cm
+  arms        Float    // cm
+  chest       Float    // cm
+  photoUrl    String?  // Base64 image
+  aiFeedback  String?  // Farsi feedback from AI
+  createdAt   DateTime @default(now())
+}
+
+model WorkoutProgram {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  programJson String   // JSON containing structure of exercises and sets
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  // Relations
+  logs        WorkoutLog[]
+}
+
+model WorkoutLog {
+  id                String         @id @default(uuid())
+  userId            String
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  programId         String
+  program           WorkoutProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  date              String         // "YYYY-MM-DD"
+  completedSetsJson String         // JSON mapping exercise+set to checked boolean
+  isCompleted       Boolean        @default(false)
+  createdAt         DateTime       @default(now())
+}
+
+model BlogPost {
+  id          String   @id @default(uuid())
+  title       String
+  slug        String   @unique
+  content     String   // Markdown content
+  summary     String
+  coverImage  String
+  createdAt   DateTime @default(now())
+}
+
+model SystemConfig {
+  key   String @id
+  value String
+}
