@@ -17,6 +17,27 @@ interface SmtpConfig {
   from: string;
 }
 
+async function sendViaResend(apiKey: string, from: string, options: SendEmailOptions): Promise<void> {
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from,
+      to: [options.to],
+      subject: options.subject,
+      html: options.html,
+    }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.message || errorData.error?.message || `Resend error: ${res.statusText}`);
+  }
+}
+
 function getSmtpConfig(): SmtpConfig | null {
   const host = process.env.SMTP_HOST;
   if (!host) return null;
@@ -142,7 +163,6 @@ async function sendRawSmtp(config: SmtpConfig, options: SendEmailOptions): Promi
 }
 
 export async function sendOtpEmail(to: string, code: string): Promise<{ success: boolean; devMode?: boolean; devCode?: string; error?: string }> {
-  const config = getSmtpConfig();
   const subject = `کد تایید ورود و ثبت‌نام سِت: ${code}`;
   const html = `
     <div dir="rtl" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 500px; margin: 0 auto; background: #0f172a; color: #f8fafc; padding: 32px 24px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1);">
@@ -165,33 +185,49 @@ export async function sendOtpEmail(to: string, code: string): Promise<{ success:
     </div>
   `;
 
-  if (!config) {
-    // Development or unconfigured SMTP fallback: log clearly in server console
-    console.log('\n======================================================');
-    console.log('📧 [SET FITNESS] ایمیل کد تایید (OTP)');
-    console.log(`گیرنده: ${to}`);
-    console.log(`کد تایید ۶ رقمی: ${code}`);
-    console.log('اعتبار: ۵ دقیقه');
-    console.log('نکته: برای ارسال واقعی، متغیرهای SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS را تنظیم کنید.');
-    console.log('======================================================\n');
-
-    return {
-      success: true,
-      devMode: true,
-      devCode: code,
-    };
+  // 1. Try Resend API if configured
+  const resendApiKey = process.env.RESEND_API_KEY;
+  if (resendApiKey) {
+    try {
+      const from = process.env.RESEND_FROM || process.env.SMTP_FROM || 'SET Fitness <onboarding@resend.dev>';
+      await sendViaResend(resendApiKey, from, { to, subject, html });
+      return { success: true };
+    } catch (error: any) {
+      console.error('Failed to send OTP via Resend:', error);
+      return {
+        success: false,
+        error: `خطا در ارسال ایمیل با Resend: ${error?.message || 'نامشخص'}`,
+      };
+    }
   }
 
-  try {
-    await sendRawSmtp(config, { to, subject, html });
-    return { success: true };
-  } catch (error: any) {
-    console.error('Failed to send OTP via SMTP:', error);
-    // If SMTP fails, log fallback in console so testing is not blocked
-    console.log(`⚠️ SMTP ارسال نشد. کد تایید برای ${to}: ${code}`);
-    return {
-      success: false,
-      error: 'خطا در ارسال ایمیل. لطفاً دقایقی دیگر تلاش کنید یا با پشتیبانی تماس بگیرید.',
-    };
+  // 2. Try SMTP if configured
+  const config = getSmtpConfig();
+  if (config) {
+    try {
+      await sendRawSmtp(config, { to, subject, html });
+      return { success: true };
+    } catch (error: any) {
+      console.error('Failed to send OTP via SMTP:', error);
+      return {
+        success: false,
+        error: 'خطا در ارسال ایمیل از طریق سرور SMTP. لطفاً تنظیمات سرور ایمیل را بررسی کنید.',
+      };
+    }
   }
+
+  // 3. Fallback: No email provider configured yet
+  console.log('\n======================================================');
+  console.log('📧 [SET FITNESS] ایمیل کد تایید (OTP)');
+  console.log(`گیرنده: ${to}`);
+  console.log(`کد تایید ۶ رقمی: ${code}`);
+  console.log('اعتبار: ۵ دقیقه');
+  console.log('نکته: برای ارسال واقعی، کلید RESEND_API_KEY یا اطلاعات SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS را تنظیم کنید.');
+  console.log('======================================================\n');
+
+  return {
+    success: true,
+    devMode: true,
+    devCode: code,
+  };
 }
