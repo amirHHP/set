@@ -1,7 +1,11 @@
 import Link from 'next/link';
-import { ShoppingCart, Scale, Dumbbell, BookOpen, ChevronLeft, Award } from 'lucide-react';
+import { ShoppingCart, Scale, Dumbbell, BookOpen, ChevronLeft, Award, Users } from 'lucide-react';
+import { getCurrentUser } from '@/app/actions/auth';
+import CoachBanner from '@/components/CoachBanner';
 
-export default function HomePage() {
+export default async function HomePage() {
+  const currentUser = await getCurrentUser();
+
   const features = [
     {
       title: 'فروشگاه تخصصی ورزشی',
@@ -37,8 +41,22 @@ export default function HomePage() {
     },
   ];
 
+  if (currentUser?.role === 'coach' || currentUser?.role === 'admin') {
+    features.unshift({
+      title: 'پنل مربیگری و مدیریت شاگردان',
+      desc: 'رهگیری شاگردان، مشاهده اندازه‌ها، برنامه‌های تمرینی، و ارائه توصیه‌ها و برنامه‌های اختصاصی.',
+      link: '/coach',
+      icon: Users,
+      color: '#ec4899', // Pink
+      badge: 'مخصوص مربی',
+    });
+  }
+
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px 0 60px' }}>
+      {/* Trainee / Coach Banner */}
+      <CoachBanner currentUser={currentUser} />
+
       {/* Hero Section */}
       <section style={{
         textAlign: 'center',

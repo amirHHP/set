@@ -4,6 +4,7 @@
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from './auth';
 import { callGeminiApi } from '@/lib/ai';
+import { formatMusclesToPersian } from '@/lib/muscles';
 
 export interface BodySizeData {
   id: string;
@@ -68,21 +69,37 @@ export async function logBodySizesAction(data: {
       return { success: false, error: 'وارد کردن تمام اندازه‌ها الزامی است.' };
     }
 
+    // Fetch user profile info
+    const user = await prisma.user.findUnique({
+      where: { id: currentUser.id }
+    });
+    const genderLabel = user?.gender === 'male' ? 'آقا (مرد)' : 'خانم (زن)';
+    let targetMusclesStr = '';
+    if (user?.targetMuscles) {
+      try {
+        const parsed = JSON.parse(user.targetMuscles);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          targetMusclesStr = `عضلات هدف و نیازمند تقویت: ${formatMusclesToPersian(parsed)}.`;
+        }
+      } catch {}
+    }
+
     // Call Gemini API for feedback
     let aiFeedback = '';
     try {
       const prompt = `
 تو یک مربی بدنسازی و کارشناس تغذیه مجرب و دلسوز هستی.
-یک خانم ورزشکار اندازه‌های فیزیکی جدید خود را ثبت کرده است:
+یک ورزشکار ${genderLabel} اندازه‌های فیزیکی جدید خود را ثبت کرده است:
 - وزن: ${data.weight} کیلوگرم
 - دور شکم: ${data.waist} سانتی‌متر
 - دور باسن: ${data.hips} سانتی‌متر
 - دور بازو: ${data.arms} سانتی‌متر
 - دور سینه: ${data.chest} سانتی‌متر
+${targetMusclesStr ? `- ${targetMusclesStr}` : ''}
 ${data.photoUrl ? 'او یک عکس نیز از وضعیت فعلی فیزیک بدنی خود بارگذاری کرده است.' : ''}
 
 با توجه به این مقادیر (و تحلیل بصری عکس در صورت وجود)، یک بازخورد ورزشی، تغذیه‌ای و انگیزشی بسیار جذاب، علمی و صمیمی به زبان فارسی بنویس. 
-تلاش کن پاسخ کوتاه و در حد ۳ تا ۴ جمله باشد. از کلمات انگلیسی استفاده نکن. نکات تمرکزی برای تمرین (مثلا تمرکز روی عضلات شکم یا باسن یا حفظ توده عضلانی) را بیان کن.
+تلاش کن پاسخ کوتاه و در حد ۳ تا ۴ جمله باشد. از کلمات انگلیسی استفاده نکن. نکات تمرکزی برای تمرین (مثلاً تمرکز روی عضلات هدف مشخص شده یا حفظ توده عضلانی) را بیان کن.
 `;
       aiFeedback = await callGeminiApi({
         prompt,

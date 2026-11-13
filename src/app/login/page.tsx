@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   loginAction,
   registerAction,
@@ -19,17 +19,20 @@ import {
   RefreshCw,
   CheckCircle,
   ArrowRight,
+  Award,
 } from 'lucide-react';
 
 type AuthMode = 'login' | 'register';
 type RegisterMethod = 'otp' | 'password';
 type LoginMethod = 'password' | 'otp';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const coachParam = searchParams.get('coach') || searchParams.get('c') || '';
 
   // Mode & Method states
-  const [authMode, setAuthMode] = useState<AuthMode>('register');
+  const [authMode, setAuthMode] = useState<AuthMode>(coachParam ? 'register' : 'register');
   const [registerMethod, setRegisterMethod] = useState<RegisterMethod>('otp');
   const [loginMethod, setLoginMethod] = useState<LoginMethod>('password');
 
@@ -39,6 +42,14 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [otpCode, setOtpCode] = useState('');
+  const [coachCode, setCoachCode] = useState(coachParam);
+
+  useEffect(() => {
+    if (coachParam) {
+      setCoachCode(coachParam.toUpperCase());
+      setAuthMode('register');
+    }
+  }, [coachParam]);
 
   // OTP Step states (1: Enter email, 2: Enter code)
   const [otpStep, setOtpStep] = useState<1 | 2>(1);
@@ -120,7 +131,7 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      const res = await registerWithOtpAction(name, email, otpCode, password);
+      const res = await registerWithOtpAction(name, email, otpCode, password, coachCode || undefined);
       if (res.success) {
         router.refresh();
         router.push('/');
@@ -142,7 +153,7 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      const res = await registerAction(name, username, password, email || undefined);
+      const res = await registerAction(name, username, password, email || undefined, coachCode || undefined);
       if (res.success) {
         router.refresh();
         router.push('/');
@@ -365,6 +376,30 @@ export default function LoginPage() {
           </div>
         )}
 
+        {/* Coach Invite Banner */}
+        {coachParam && (
+          <div style={{
+            background: 'rgba(255, 107, 82, 0.1)',
+            border: '1px solid rgba(255, 107, 82, 0.25)',
+            borderRadius: '12px',
+            padding: '12px 14px',
+            marginBottom: '18px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+          }}>
+            <Award size={22} color="var(--primary)" style={{ flexShrink: 0 }} />
+            <div style={{ fontSize: '0.85rem' }}>
+              <strong style={{ color: 'var(--primary)', display: 'block', marginBottom: '2px' }}>
+                عضویت با دعوت مربی
+              </strong>
+              <span style={{ color: 'var(--text-muted)' }}>
+                شما با کد دعوت <code>{coachParam}</code> وارد شده‌اید. پس از ثبت‌نام، فضای اختصاصی مربی برای شما فعال خواهد شد.
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* ---------------- REGISTER MODE ---------------- */}
         {authMode === 'register' && (
           <div>
@@ -519,7 +554,7 @@ export default function LoginPage() {
                       />
                     </div>
 
-                    <div className="form-group" style={{ marginBottom: '24px' }}>
+                    <div className="form-group" style={{ marginBottom: '18px' }}>
                       <label className="form-label">
                         رمز عبور <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>(اختیاری - برای ورودهای بعدی)</span>
                       </label>
@@ -530,6 +565,30 @@ export default function LoginPage() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                       />
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: '24px' }}>
+                      <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Award size={15} color="var(--primary)" />
+                          <span>کد معرف / مربی</span>
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>(اختیاری)</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="input-field"
+                        placeholder="مثال: COACH-1234"
+                        value={coachCode}
+                        onChange={(e) => setCoachCode(e.target.value.toUpperCase())}
+                        dir="ltr"
+                        style={{ letterSpacing: '1px' }}
+                      />
+                      {coachCode && (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--primary)', marginTop: '4px', display: 'block' }}>
+                          ✓ حساب شما به این مربی متصل خواهد شد.
+                        </span>
+                      )}
                     </div>
 
                     <button
@@ -623,7 +682,7 @@ export default function LoginPage() {
                   />
                 </div>
 
-                <div className="form-group" style={{ marginBottom: '24px' }}>
+                <div className="form-group" style={{ marginBottom: '18px' }}>
                   <label className="form-label">رمز عبور</label>
                   <input
                     type="password"
@@ -633,6 +692,30 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                   />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: '24px' }}>
+                  <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Award size={15} color="var(--primary)" />
+                      <span>کد معرف / مربی</span>
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>(اختیاری)</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    placeholder="مثال: COACH-1234"
+                    value={coachCode}
+                    onChange={(e) => setCoachCode(e.target.value.toUpperCase())}
+                    dir="ltr"
+                    style={{ letterSpacing: '1px' }}
+                  />
+                  {coachCode && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--primary)', marginTop: '4px', display: 'block' }}>
+                      ✓ حساب شما به این مربی متصل خواهد شد.
+                    </span>
+                  )}
                 </div>
 
                 <button
@@ -927,5 +1010,17 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+        در حال بارگذاری...
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }

@@ -2,22 +2,32 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   getActiveWorkoutProgram,
   generateWorkoutProgramAction,
   getWorkoutLogs,
   saveWorkoutLogAction,
+  getUserWorkoutContextAction,
   WorkoutProgramData,
   WorkoutLogData
 } from '@/app/actions/workout';
 import { getCurrentUser, PublicUser } from '@/app/actions/auth';
-import { Dumbbell, CheckCircle, Calendar, Sparkles, RefreshCw, AlertCircle, Play, Check } from 'lucide-react';
+import CoachBanner from '@/components/CoachBanner';
+import { getMuscleName } from '@/lib/muscles';
+import { Dumbbell, CheckCircle, Calendar, Sparkles, RefreshCw, AlertCircle, Play, Check, Layers, User } from 'lucide-react';
 
 export default function WorkoutPage() {
   const router = useRouter();
   const [user, setUser] = useState<PublicUser | null>(null);
   const [program, setProgram] = useState<WorkoutProgramData | null>(null);
   const [logs, setLogs] = useState<WorkoutLogData[]>([]);
+  const [userContext, setUserContext] = useState<{
+    gender: string;
+    height: number | null;
+    targetMuscles: string[];
+    latestWeight: number | null;
+  } | null>(null);
   
   // Loading & Action State
   const [loading, setLoading] = useState(true);
@@ -51,6 +61,19 @@ export default function WorkoutPage() {
           if (logsRes.success && logsRes.logs) {
             setLogs(logsRes.logs);
           }
+
+          const ctxRes = await getUserWorkoutContextAction();
+          if (ctxRes.success) {
+            setUserContext({
+              gender: ctxRes.gender || 'female',
+              height: ctxRes.height || null,
+              targetMuscles: ctxRes.targetMuscles || [],
+              latestWeight: ctxRes.latestWeight || null,
+            });
+            if (ctxRes.latestWeight) {
+              setWeight(String(ctxRes.latestWeight));
+            }
+          }
         }
       } catch (err) {
         console.error('Error loading workout page:', err);
@@ -70,7 +93,10 @@ export default function WorkoutPage() {
       const res = await generateWorkoutProgramAction({
         goal,
         level,
-        currentWeight: parseFloat(weight) || 0
+        currentWeight: parseFloat(weight) || (userContext?.latestWeight || 0),
+        gender: userContext?.gender,
+        height: userContext?.height || undefined,
+        targetMuscles: userContext?.targetMuscles,
       });
 
       if (res.success && res.program) {
@@ -171,6 +197,9 @@ export default function WorkoutPage() {
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '10px 0 50px' }}>
       
+      {/* Coach Banner */}
+      <CoachBanner currentUser={user} compact />
+
       <div style={{ marginBottom: '32px' }}>
         <h1 style={{ fontSize: '2rem', fontWeight: '800', marginBottom: '8px', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Dumbbell size={32} />
@@ -212,6 +241,55 @@ export default function WorkoutPage() {
           </div>
 
           <form onSubmit={handleGenerate}>
+            {/* Target Muscles & Physical Profile Context */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(255, 107, 82, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '14px',
+              padding: '16px',
+              marginBottom: '20px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: '800', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Layers size={16} />
+                  <span>عضلات هدف و نیازمند تقویت (ارسال به AI)</span>
+                </span>
+                <Link href="/profile?tab=anatomy" style={{ fontSize: '0.75rem', color: '#ff8c75', textDecoration: 'underline' }}>
+                  انتخاب عضلات در پروفایل ↗
+                </Link>
+              </div>
+
+              {userContext?.targetMuscles && userContext.targetMuscles.length > 0 ? (
+                <div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                    هوش مصنوعی حرکات اختصاصی برای تقویت و رشد این عضلات در نظر خواهد گرفت:
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {userContext.targetMuscles.map(mId => (
+                      <span key={mId} className="badge badge-primary" style={{ fontSize: '0.75rem' }}>
+                        ✓ {getMuscleName(mId)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.6' }}>
+                  هنوز عضله خاصی در پروفایلتان برای تمرکز انتخاب نکرده‌اید.{' '}
+                  <Link href="/profile?tab=anatomy" style={{ color: 'var(--primary)', fontWeight: '700' }}>
+                    رفتن به نقشه عضلات در پروفایل
+                  </Link>
+                </div>
+              )}
+
+              {userContext && (
+                <div style={{ display: 'flex', gap: '14px', marginTop: '10px', fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '8px' }}>
+                  <span>جنسیت: {userContext.gender === 'male' ? 'آقا' : 'خانم'}</span>
+                  {userContext.height && <span>قد: {userContext.height} cm</span>}
+                  {userContext.latestWeight && <span>آخرین وزن ثبت شده: {userContext.latestWeight} kg</span>}
+                </div>
+              )}
+            </div>
+
             <div className="form-group">
               <label className="form-label">هدف ورزشی شما</label>
               <select 

@@ -6,6 +6,45 @@ import { cookies } from 'next/headers';
 
 const SESSION_KEY = 'set_session';
 
+export type AiProvider = 'gemini' | 'openai' | 'deepseek' | 'anthropic' | 'openrouter';
+
+export interface FullAiConfig {
+  provider: AiProvider;
+  
+  // Google Gemini
+  geminiApiKey: string;
+  geminiModel: string;
+  geminiBaseUrl: string;
+
+  // OpenAI
+  openaiApiKey: string;
+  openaiModel: string;
+  openaiBaseUrl: string;
+
+  // DeepSeek
+  deepseekApiKey: string;
+  deepseekModel: string;
+  deepseekBaseUrl: string;
+
+  // Anthropic
+  anthropicApiKey: string;
+  anthropicModel: string;
+
+  // OpenRouter
+  openrouterApiKey: string;
+  openrouterModel: string;
+  openrouterBaseUrl: string;
+
+  // Active shortcuts
+  activeApiKey: string;
+  activeModel: string;
+  activeBaseUrl: string;
+
+  // Backwards compatibility
+  apiKey: string;
+  model: string;
+}
+
 export async function getSystemSetting(key: string): Promise<string> {
   try {
     const config = await prisma.systemConfig.findUnique({
@@ -20,7 +59,6 @@ export async function getSystemSetting(key: string): Promise<string> {
 
 export async function setSystemSetting(key: string, value: string): Promise<{ success: boolean; error?: string }> {
   try {
-    // Basic auth check
     const cookieStore = await cookies();
     const sessionUserId = cookieStore.get(SESSION_KEY)?.value;
     if (!sessionUserId) {
@@ -34,8 +72,8 @@ export async function setSystemSetting(key: string, value: string): Promise<{ su
 
     await prisma.systemConfig.upsert({
       where: { key },
-      update: { value },
-      create: { key, value }
+      update: { value: value.trim() },
+      create: { key, value: value.trim() }
     });
     return { success: true };
   } catch (error) {
@@ -44,12 +82,304 @@ export async function setSystemSetting(key: string, value: string): Promise<{ su
   }
 }
 
-export async function getAiConfig() {
-  const provider = await getSystemSetting('ai-provider') || 'gemini';
-  const model = await getSystemSetting('ai-model-gemini') || 'gemini-2.0-flash';
-  const apiKey = await getSystemSetting('gemini-api-key') || '';
-  
-  return { provider, model, apiKey };
+export async function setSystemSettingsBatch(settings: Record<string, string>): Promise<{ success: boolean; error?: string }> {
+  try {
+    const cookieStore = await cookies();
+    const sessionUserId = cookieStore.get(SESSION_KEY)?.value;
+    if (!sessionUserId) {
+      return { success: false, error: 'احراز هویت انجام نشده است.' };
+    }
+    
+    const user = await prisma.user.findUnique({ where: { id: sessionUserId } });
+    if (!user || user.role !== 'admin') {
+      return { success: false, error: 'دسترسی غیرمجاز.' };
+    }
+
+    const entries = Object.entries(settings);
+    await Promise.all(
+      entries.map(([key, value]) =>
+        prisma.systemConfig.upsert({
+          where: { key },
+          update: { value: (value ?? '').trim() },
+          create: { key, value: (value ?? '').trim() }
+        })
+      )
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('Error saving settings batch:', error);
+    return { success: false, error: 'خطا در ثبت گروهی تنظیمات.' };
+  }
+}
+
+export async function getAiConfig(): Promise<FullAiConfig> {
+  const configs = await prisma.systemConfig.findMany().catch(() => []);
+  const map: Record<string, string> = {};
+  for (const c of configs) {
+    map[c.key] = c.value;
+  }
+
+  const rawProvider = map['ai-provider'] as AiProvider;
+  const validProviders: AiProvider[] = ['gemini', 'openai', 'deepseek', 'anthropic', 'openrouter'];
+  const provider: AiProvider = validProviders.includes(rawProvider) ? rawProvider : 'gemini';
+
+  const geminiApiKey = map['gemini-api-key'] || '';
+  const geminiModel = map['ai-model-gemini'] || 'gemini-2.0-flash';
+  const geminiBaseUrl = map['gemini-base-url'] || '';
+
+  const openaiApiKey = map['openai-api-key'] || '';
+  const openaiModel = map['ai-model-openai'] || 'gpt-4o-mini';
+  const openaiBaseUrl = map['openai-base-url'] || '';
+
+  const deepseekApiKey = map['deepseek-api-key'] || '';
+  const deepseekModel = map['ai-model-deepseek'] || 'deepseek-chat';
+  const deepseekBaseUrl = map['deepseek-base-url'] || '';
+
+  const anthropicApiKey = map['anthropic-api-key'] || '';
+  const anthropicModel = map['ai-model-anthropic'] || 'claude-3-5-haiku-20241022';
+
+  const openrouterApiKey = map['openrouter-api-key'] || '';
+  const openrouterModel = map['ai-model-openrouter'] || 'google/gemini-2.0-flash-001';
+  const openrouterBaseUrl = map['openrouter-base-url'] || '';
+
+  // Determine active keys based on current provider
+  let activeApiKey = geminiApiKey;
+  let activeModel = geminiModel;
+  let activeBaseUrl = geminiBaseUrl;
+
+  if (provider === 'openai') {
+    activeApiKey = openaiApiKey;
+    activeModel = openaiModel;
+    activeBaseUrl = openaiBaseUrl;
+  } else if (provider === 'deepseek') {
+    activeApiKey = deepseekApiKey;
+    activeModel = deepseekModel;
+    activeBaseUrl = deepseekBaseUrl;
+  } else if (provider === 'anthropic') {
+    activeApiKey = anthropicApiKey;
+    activeModel = anthropicModel;
+    activeBaseUrl = '';
+  } else if (provider === 'openrouter') {
+    activeApiKey = openrouterApiKey;
+    activeModel = openrouterModel;
+    activeBaseUrl = openrouterBaseUrl;
+  }
+
+  return {
+    provider,
+    geminiApiKey,
+    geminiModel,
+    geminiBaseUrl,
+    openaiApiKey,
+    openaiModel,
+    openaiBaseUrl,
+    deepseekApiKey,
+    deepseekModel,
+    deepseekBaseUrl,
+    anthropicApiKey,
+    anthropicModel,
+    openrouterApiKey,
+    openrouterModel,
+    openrouterBaseUrl,
+    activeApiKey,
+    activeModel,
+    activeBaseUrl,
+    // Backwards compatibility
+    apiKey: activeApiKey || geminiApiKey,
+    model: activeModel || geminiModel,
+  };
+}
+
+export async function testAiConnectionAction(params: {
+  provider: AiProvider;
+  apiKey: string;
+  model?: string;
+  baseUrl?: string;
+}): Promise<{
+  success: boolean;
+  latencyMs?: number;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const cookieStore = await cookies();
+    const sessionUserId = cookieStore.get(SESSION_KEY)?.value;
+    if (!sessionUserId) {
+      return { success: false, error: 'احراز هویت انجام نشده است.' };
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: sessionUserId } });
+    if (!user || user.role !== 'admin') {
+      return { success: false, error: 'دسترسی غیرمجاز.' };
+    }
+
+    const { provider, apiKey, model, baseUrl } = params;
+    if (!apiKey || !apiKey.trim()) {
+      return { success: false, error: 'کلید API وارد نشده است.' };
+    }
+
+    const key = apiKey.trim();
+    const startTime = Date.now();
+
+    if (provider === 'gemini') {
+      const selectedModel = model?.trim() || 'gemini-2.0-flash';
+      const cleanModel = selectedModel.startsWith('models/') ? selectedModel : `models/${selectedModel}`;
+      const base = baseUrl?.trim() ? baseUrl.trim().replace(/\/+$/, '') : 'https://generativelanguage.googleapis.com';
+      const url = `${base}/v1beta/${cleanModel}:generateContent?key=${key}`;
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: 'سلام، لطفاً فقط کلمه «تایید» را ارسال کن.' }] }],
+          generationConfig: { maxOutputTokens: 20 }
+        }),
+        signal: AbortSignal.timeout(15000)
+      });
+
+      const latency = Date.now() - startTime;
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        const msg = errJson?.error?.message || `کد خطای HTTP ${res.status}`;
+        return { success: false, latencyMs: latency, error: `پاسخ ناموفق از گوگل جمینای: ${msg}` };
+      }
+
+      return {
+        success: true,
+        latencyMs: latency,
+        message: `اتصال به Google Gemini با موفقیت برقرار شد (${latency} میلی‌ثانیه).`
+      };
+    } else if (provider === 'openai') {
+      const selectedModel = model?.trim() || 'gpt-4o-mini';
+      const base = baseUrl?.trim() ? baseUrl.trim().replace(/\/+$/, '') : 'https://api.openai.com/v1';
+      const url = `${base}/chat/completions`;
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          messages: [{ role: 'user', content: 'سلام، فقط بنویس تایید' }],
+          max_tokens: 10
+        }),
+        signal: AbortSignal.timeout(15000)
+      });
+
+      const latency = Date.now() - startTime;
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        const msg = errJson?.error?.message || `کد خطای HTTP ${res.status}`;
+        return { success: false, latencyMs: latency, error: `پاسخ ناموفق از OpenAI: ${msg}` };
+      }
+
+      return {
+        success: true,
+        latencyMs: latency,
+        message: `اتصال به OpenAI (${selectedModel}) با موفقیت برقرار شد (${latency} میلی‌ثانیه).`
+      };
+    } else if (provider === 'deepseek') {
+      const selectedModel = model?.trim() || 'deepseek-chat';
+      const base = baseUrl?.trim() ? baseUrl.trim().replace(/\/+$/, '') : 'https://api.deepseek.com';
+      const url = `${base}/chat/completions`;
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          messages: [{ role: 'user', content: 'سلام، فقط بنویس تایید' }],
+          max_tokens: 10
+        }),
+        signal: AbortSignal.timeout(15000)
+      });
+
+      const latency = Date.now() - startTime;
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        const msg = errJson?.error?.message || `کد خطای HTTP ${res.status}`;
+        return { success: false, latencyMs: latency, error: `پاسخ ناموفق از DeepSeek: ${msg}` };
+      }
+
+      return {
+        success: true,
+        latencyMs: latency,
+        message: `اتصال به DeepSeek (${selectedModel}) با موفقیت برقرار شد (${latency} میلی‌ثانیه).`
+      };
+    } else if (provider === 'anthropic') {
+      const selectedModel = model?.trim() || 'claude-3-5-haiku-20241022';
+      const url = 'https://api.anthropic.com/v1/messages';
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'سلام، فقط بنویس تایید' }]
+        }),
+        signal: AbortSignal.timeout(15000)
+      });
+
+      const latency = Date.now() - startTime;
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        const msg = errJson?.error?.message || `کد خطای HTTP ${res.status}`;
+        return { success: false, latencyMs: latency, error: `پاسخ ناموفق از Anthropic: ${msg}` };
+      }
+
+      return {
+        success: true,
+        latencyMs: latency,
+        message: `اتصال به Anthropic Claude (${selectedModel}) با موفقیت برقرار شد (${latency} میلی‌ثانیه).`
+      };
+    } else if (provider === 'openrouter') {
+      const selectedModel = model?.trim() || 'google/gemini-2.0-flash-001';
+      const base = baseUrl?.trim() ? baseUrl.trim().replace(/\/+$/, '') : 'https://openrouter.ai/api/v1';
+      const url = `${base}/chat/completions`;
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          messages: [{ role: 'user', content: 'سلام، فقط بنویس تایید' }],
+          max_tokens: 10
+        }),
+        signal: AbortSignal.timeout(15000)
+      });
+
+      const latency = Date.now() - startTime;
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        const msg = errJson?.error?.message || `کد خطای HTTP ${res.status}`;
+        return { success: false, latencyMs: latency, error: `پاسخ ناموفق از OpenRouter: ${msg}` };
+      }
+
+      return {
+        success: true,
+        latencyMs: latency,
+        message: `اتصال به OpenRouter با موفقیت برقرار شد (${latency} میلی‌ثانیه).`
+      };
+    }
+
+    return { success: false, error: 'ارائه‌دهنده انتخابی پشتیبانی نمی‌شود.' };
+  } catch (error: any) {
+    console.error('Error testing AI connection:', error);
+    return { success: false, error: `خطا در اتصال: ${error?.message || 'پاسخی دریافت نشد یا زمان به اتمام رسید'}` };
+  }
 }
 
 function getModelRateLimits(modelName: string) {
@@ -82,7 +412,9 @@ export async function fetchAvailableGeminiModels(): Promise<{ success: boolean; 
       return { success: false, error: 'لطفاً ابتدا کلید API خود را ذخیره کنید.' };
     }
 
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    const customBase = await getSystemSetting('gemini-base-url');
+    const base = customBase?.trim() ? customBase.trim().replace(/\/+$/, '') : 'https://generativelanguage.googleapis.com';
+    const res = await fetch(`${base}/v1beta/models?key=${apiKey}`);
     if (!res.ok) {
       const errText = await res.text();
       console.error('Gemini models API error:', errText);

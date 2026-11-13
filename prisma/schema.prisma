@@ -7,19 +7,53 @@ datasource db {
 }
 
 model User {
-  id           String           @id @default(uuid())
-  name         String
-  username     String           @unique
-  email        String?          @unique
-  passwordHash String
-  salt         String
-  role         String           @default("user") // "admin" or "user"
-  createdAt    DateTime         @default(now())
+  id            String           @id @default(uuid())
+  name          String
+  username      String           @unique
+  email         String?          @unique
+  passwordHash  String
+  salt          String
+  role          String           @default("user") // "admin", "coach", or "user"
+  gender        String?          @default("female") // "female" or "male"
+  height        Float?           // cm
+  targetMuscles String?          // JSON array of muscle IDs / names
+  createdAt     DateTime         @default(now())
+
+  // Coach specific fields
+  coachCode           String?          @unique
+  coachBio            String?
+  coachPhone          String?
+  coachWelcomeMessage String?
+
+  // Trainee relation
+  coachId             String?
+  coach               User?            @relation("CoachTrainees", fields: [coachId], references: [id], onDelete: SetNull)
+  trainees            User[]           @relation("CoachTrainees")
+
+  // Coach notes
+  notesSent           CoachNote[]      @relation("CoachNotesSent")
+  notesReceived       CoachNote[]      @relation("CoachNotesReceived")
 
   // Relations
   sizes        BodySize[]
   programs     WorkoutProgram[]
   logs         WorkoutLog[]
+
+  @@index([coachCode])
+  @@index([coachId])
+}
+
+model CoachNote {
+  id        String   @id @default(uuid())
+  coachId   String
+  coach     User     @relation("CoachNotesSent", fields: [coachId], references: [id], onDelete: Cascade)
+  traineeId String
+  trainee   User     @relation("CoachNotesReceived", fields: [traineeId], references: [id], onDelete: Cascade)
+  note      String
+  createdAt DateTime @default(now())
+
+  @@index([coachId])
+  @@index([traineeId])
 }
 
 model EmailOtp {

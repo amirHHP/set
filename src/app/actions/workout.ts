@@ -4,6 +4,7 @@
 import prisma from '@/lib/prisma';
 import { getCurrentUser } from './auth';
 import { callGeminiApi } from '@/lib/ai';
+import { formatMusclesToPersian } from '@/lib/muscles';
 
 function cleanJsonString(str: string): string {
   let cleaned = str.trim();
@@ -91,10 +92,56 @@ export async function getActiveWorkoutProgram(): Promise<{ success: boolean; pro
   }
 }
 
+export async function getUserWorkoutContextAction(): Promise<{
+  success: boolean;
+  gender?: string;
+  height?: number | null;
+  targetMuscles?: string[];
+  latestWeight?: number | null;
+  error?: string;
+}> {
+  try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) return { success: false, error: 'احراز هویت انجام نشده است.' };
+
+    const user = await prisma.user.findUnique({
+      where: { id: currentUser.id },
+      include: {
+        sizes: {
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        }
+      }
+    });
+
+    let targetMuscles: string[] = [];
+    if (user?.targetMuscles) {
+      try {
+        const parsed = JSON.parse(user.targetMuscles);
+        if (Array.isArray(parsed)) targetMuscles = parsed;
+      } catch {}
+    }
+
+    return {
+      success: true,
+      gender: user?.gender || 'female',
+      height: user?.height !== null && user?.height !== undefined ? Number(user.height) : null,
+      targetMuscles,
+      latestWeight: user?.sizes?.[0]?.weight || null,
+    };
+  } catch (err) {
+    console.error('Error fetching user workout context:', err);
+    return { success: false, error: 'خطا در دریافت مشخصات کاربر.' };
+  }
+}
+
 export async function generateWorkoutProgramAction(data: {
   goal: string;
   level: string;
-  currentWeight: number;
+  currentWeight?: number;
+  gender?: string;
+  height?: number;
+  targetMuscles?: string[];
 }): Promise<{ success: boolean; program?: WorkoutProgramData; error?: string }> {
   try {
     const currentUser = await getCurrentUser();
@@ -106,26 +153,88 @@ export async function generateWorkoutProgramAction(data: {
       return { success: false, error: 'پر کردن فیلدهای هدف و سطح آمادگی الزامی است.' };
     }
 
-    const weightStr = data.currentWeight ? `${data.currentWeight} کیلوگرم` : 'نامشخص';
-    const prompt = `
-تو یک مربی بدنسازی و بدنساز حرفه‌ای بانوان با اطلاعات علمی به‌روز هستی.
-یک خانم ورزشکار با مشخصات زیر خواهان یک برنامه تمرینی است:
-- هدف تمرین: ${data.goal} (کاهش وزن، عضله‌سازی، فرم‌دهی، افزایش استقامت)
-- سطح آمادگی جسمانی: ${data.level} (مبتدی، متوسط، حرفه‌ای)
-- وزن فعلی: ${weightStr}
+    // Fetch user profile and latest body sizes
+    const user = await prisma.user.findUnique({
+      where: { id: currentUser.id },
+      include: {
+        sizes: {
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        }
+      }
+    });
 
-یک برنامه تمرینی علمی و عالی در قالب یک فایل JSON معتبر به زبان فارسی بنویس. برنامه باید شامل ۳ روز تمرینی در هفته باشد. 
+    const latestSize = user?.sizes?.[0];
+
+    // Resolve gender
+    const userGender = data.gender || user?.gender || 'female';
+    const genderLabel = userGender === 'male' ? 'آقا (مرد)' : 'خانم (زن)';
+
+    // Resolve weight
+    const weightNum = data.currentWeight || latestSize?.weight || 0;
+    const weightStr = weightNum ? `${weightNum} کیلوگرم` : 'ثبت نشده';
+
+    // Resolve height
+    const heightNum = data.height || (user?.height ? Number(user.height) : null);
+    const heightStr = heightNum ? `${heightNum} سانتی‌متر` : 'ثبت نشده';
+
+    // Resolve target muscles
+    let targetMuscles: string[] = [];
+    if (data.targetMuscles && data.targetMuscles.length > 0) {
+      targetMuscles = data.targetMuscles;
+    } else if (user?.targetMuscles) {
+      try {
+        const parsed = JSON.parse(user.targetMuscles);
+        if (Array.isArray(parsed)) targetMuscles = parsed;
+      } catch {}
+    }
+
+    const targetMusclesStr = targetMuscles.length > 0 
+      ? formatMusclesToPersian(targetMuscles) 
+      : 'تمام عضلات اصلی (برنامه جامع و متوازن)';
+
+    // Measurements context if available
+    let measurementsContext = '';
+    if (latestSize) {
+      measurementsContext = `
+- آخرین سایزهای بدنی ورزشکار:
+  * دور شکم: ${latestSize.waist} سانتی‌متر
+  * دور باسن: ${latestSize.hips} سانتی‌متر
+  * دور بازو: ${latestSize.arms} سانتی‌متر
+  * دور سینه: ${latestSize.chest} سانتی‌متر
+`;
+    }
+
+    const prompt = `
+تو یک مربی بدنسازی و فیتنس ارشد و طراح تمرینات تخصصی با به‌روزترین متدهای علمی تمرین (هایپرتروفی، سازگاری عصبی-عضلانی و کات) هستی.
+یک ورزشکار با مشخصات فردی و آناتومیک زیر از تو خواهان یک برنامه تمرینی ۳ روزه اختصاصی است:
+
+مشخصات ورزشکار:
+- جنسیت: ${genderLabel}
+- قد: ${heightStr}
+- وزن: ${weightStr}
+- هدف اصلی تمرین: ${data.goal}
+- سطح آمادگی جسمانی: ${data.level}
+${measurementsContext}
+- عضلات دارای اولویت و نیازمند تقویت (Target Muscles): ${targetMusclesStr}
+
+دستورالعمل ویژه مربی:
+${targetMuscles.length > 0 
+  ? `ورزشکار صراحتاً مشخص کرده که عضلات [${targetMusclesStr}] نیاز به تقویت، رشد، تفکیک یا فرم‌دهی فوری دارند. لطفاً در تمام روزهای تمرینی، حرکات اصلی، ترکیبی (Compound) و ایزوله با شدت و حجم مناسب برای تقویت این عضلات لحاظ کن و نام‌گذاری روزها و ترتیب حرکات نیز بر اساس اولویت این عضلات باشد.`
+  : 'برنامه را به صورت متعادل و متناسب با هدف و سطح ورزشکار توزیع کن.'}
+
+یک برنامه تمرینی علمی، استاندارد و باانگیزه در قالب یک فایل JSON معتبر به زبان فارسی بنویس. برنامه باید شامل ۳ روز تمرینی در هفته باشد. 
 ساختار خروجی باید دقیقاً مانند قالب زیر باشد و هیچ متنی به جز این JSON برنگردانی (حتی فنس‌های کد markdown مثل \`\`\`json را هم نگذار، فقط یک JSON خام معتبر):
 {
   "goal": "${data.goal}",
   "programName": "برنامه تخصصی ${data.goal} سِت",
   "days": [
     {
-      "dayName": "نام روز (مثال: روز ۱: تمرین پا و باسن جهت فرم‌دهی)",
+      "dayName": "نام روز (مثال: روز ۱: تمرین پا و باسن با تمرکز بر عضلات هدف)",
       "exercises": [
         {
           "id": "ex-1",
-          "name": "نام حرکت ورزشی (فارسی - دقیق)",
+          "name": "نام حرکت ورزشی (فارسی و دقیق)",
           "setsCount": 4,
           "reps": "12-12-10-10",
           "rest": "60 ثانیه"

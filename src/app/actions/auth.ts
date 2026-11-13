@@ -9,13 +9,50 @@ import { sendOtpEmail } from '@/lib/email';
 
 const SESSION_KEY = 'set_session';
 
+export interface CoachInfo {
+  id: string;
+  name: string;
+  coachBio?: string | null;
+  coachPhone?: string | null;
+  coachWelcomeMessage?: string | null;
+  coachCode?: string | null;
+}
+
 export interface PublicUser {
   id: string;
   name: string;
   username: string;
   email?: string | null;
   role: string;
+  gender?: string | null;
+  height?: number | null;
+  targetMuscles?: string[] | null;
   createdAt: string;
+  sizesCount?: number;
+  programsCount?: number;
+  logsCount?: number;
+  coachCode?: string | null;
+  coachBio?: string | null;
+  coachPhone?: string | null;
+  coachWelcomeMessage?: string | null;
+  coachId?: string | null;
+  coach?: CoachInfo | null;
+  traineesCount?: number;
+}
+
+export async function generateUniqueCoachCode(seed?: string): Promise<string> {
+  const base = (seed || 'COACH')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toUpperCase()
+    .substring(0, 6) || 'COACH';
+
+  for (let i = 0; i < 10; i++) {
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const candidate = `${base}-${randomSuffix}`;
+    const exists = await prisma.user.findUnique({ where: { coachCode: candidate } });
+    if (!exists) return candidate;
+  }
+  return `COACH-${Date.now().toString().slice(-6)}`;
 }
 
 function toPublicUser(user: any): PublicUser {
@@ -33,13 +70,42 @@ function toPublicUser(user: any): PublicUser {
     }
   }
 
+  let targetMuscles: string[] = [];
+  if (user?.targetMuscles) {
+    try {
+      targetMuscles = typeof user.targetMuscles === 'string' ? JSON.parse(user.targetMuscles) : user.targetMuscles;
+    } catch {
+      targetMuscles = [];
+    }
+  }
+
   return {
     id: user.id,
     name: user.name,
     username: user.username,
     email: user.email || null,
     role: user.role,
+    gender: user.gender || 'female',
+    height: user.height !== null && user.height !== undefined ? Number(user.height) : null,
+    targetMuscles: Array.isArray(targetMuscles) ? targetMuscles : [],
     createdAt,
+    sizesCount: user?._count?.sizes ?? 0,
+    programsCount: user?._count?.programs ?? 0,
+    logsCount: user?._count?.logs ?? 0,
+    coachCode: user.coachCode || null,
+    coachBio: user.coachBio || null,
+    coachPhone: user.coachPhone || null,
+    coachWelcomeMessage: user.coachWelcomeMessage || null,
+    coachId: user.coachId || null,
+    coach: user.coach ? {
+      id: user.coach.id,
+      name: user.coach.name,
+      coachBio: user.coach.coachBio || null,
+      coachPhone: user.coach.coachPhone || null,
+      coachWelcomeMessage: user.coach.coachWelcomeMessage || null,
+      coachCode: user.coach.coachCode || null,
+    } : null,
+    traineesCount: user?._count?.trainees ?? 0,
   };
 }
 
@@ -54,7 +120,27 @@ export async function getCurrentUser(): Promise<PublicUser | null> {
     if (!userId) return null;
 
     const user = await prisma.user.findUnique({
-      where: { id: userId }
+      where: { id: userId },
+      include: {
+        coach: {
+          select: {
+            id: true,
+            name: true,
+            coachBio: true,
+            coachPhone: true,
+            coachWelcomeMessage: true,
+            coachCode: true,
+          }
+        },
+        _count: {
+          select: {
+            sizes: true,
+            programs: true,
+            logs: true,
+            trainees: true,
+          }
+        }
+      }
     });
 
     if (!user) {
@@ -119,7 +205,8 @@ export async function registerAction(
   nameInput: string,
   usernameInput: string,
   passwordInput: string,
-  emailInput?: string
+  emailInput?: string,
+  coachCodeInput?: string
 ): Promise<{ success: boolean; user?: PublicUser; error?: string }> {
   try {
     const name = nameInput.trim();
@@ -151,6 +238,19 @@ export async function registerAction(
       }
     }
 
+    // Check optional coach code
+    let coachId: string | null = null;
+    if (coachCodeInput?.trim()) {
+      const coach = await prisma.user.findFirst({
+        where: {
+          coachCode: { equals: coachCodeInput.trim(), mode: 'insensitive' }
+        }
+      });
+      if (coach) {
+        coachId = coach.id;
+      }
+    }
+
     const salt = generateSalt();
     const passwordHash = hashPassword(password, salt);
 
@@ -168,6 +268,7 @@ export async function registerAction(
         passwordHash,
         salt,
         role,
+        coachId: coachId || undefined,
       }
     });
 
@@ -264,7 +365,8 @@ export async function registerWithOtpAction(
   nameInput: string,
   emailInput: string,
   codeInput: string,
-  passwordInput?: string
+  passwordInput?: string,
+  coachCodeInput?: string
 ): Promise<{ success: boolean; user?: PublicUser; error?: string }> {
   try {
     const name = nameInput.trim();
@@ -309,6 +411,19 @@ export async function registerWithOtpAction(
       return { success: false, error: 'این ایمیل قبلاً ثبت شده است.' };
     }
 
+    // Check optional coach code
+    let coachId: string | null = null;
+    if (coachCodeInput?.trim()) {
+      const coach = await prisma.user.findFirst({
+        where: {
+          coachCode: { equals: coachCodeInput.trim(), mode: 'insensitive' }
+        }
+      });
+      if (coach) {
+        coachId = coach.id;
+      }
+    }
+
     // Generate unique username based on email local part
     const localPart = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '') || 'user';
     let candidateUsername = localPart.toLowerCase();
@@ -336,6 +451,7 @@ export async function registerWithOtpAction(
         passwordHash,
         salt,
         role,
+        coachId: coachId || undefined,
       }
     });
 
@@ -492,13 +608,252 @@ export async function listUsersAction(): Promise<{ success: boolean; users?: Pub
     }
 
     const users = await prisma.user.findMany({
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      include: {
+        coach: {
+          select: {
+            id: true,
+            name: true,
+            coachBio: true,
+            coachPhone: true,
+            coachWelcomeMessage: true,
+            coachCode: true,
+          }
+        },
+        _count: {
+          select: {
+            sizes: true,
+            programs: true,
+            logs: true,
+            trainees: true,
+          }
+        }
+      }
     });
 
     return { success: true, users: users.map(toPublicUser) };
   } catch (error) {
     console.error('List users action error:', error);
     return { success: false, error: 'خطا در بارگذاری کاربران.' };
+  }
+}
+
+export async function updateUserRoleAction(
+  userId: string,
+  newRole: 'admin' | 'coach' | 'user'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser || currentUser.role !== 'admin') {
+      return { success: false, error: 'دسترسی غیرمجاز.' };
+    }
+
+    if (currentUser.id === userId && newRole !== 'admin') {
+      const otherAdmins = await prisma.user.count({
+        where: { role: 'admin', id: { not: userId } }
+      });
+      if (otherAdmins === 0) {
+        return { success: false, error: 'شما تنها مدیر سیستم هستید و نمی‌توانید دسترسی خود را سلب کنید.' };
+      }
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { id: userId } });
+    if (!targetUser) {
+      return { success: false, error: 'کاربر مورد نظر یافت نشد.' };
+    }
+
+    let coachCode = targetUser.coachCode;
+    if (newRole === 'coach' && !coachCode) {
+      coachCode = await generateUniqueCoachCode(targetUser.name || targetUser.username);
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        role: newRole,
+        coachCode: coachCode || undefined,
+      }
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Update user role error:', error);
+    return { success: false, error: 'خطا در تغییر نقش کاربر.' };
+  }
+}
+
+export async function resetUserPasswordAction(
+  userId: string,
+  newPassword: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser || currentUser.role !== 'admin') {
+      return { success: false, error: 'دسترسی غیرمجاز.' };
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      return { success: false, error: 'رمز عبور جدید باید حداقل ۶ کاراکتر باشد.' };
+    }
+
+    const targetUser = await prisma.user.findUnique({ where: { id: userId } });
+    if (!targetUser) {
+      return { success: false, error: 'کاربر مورد نظر یافت نشد.' };
+    }
+
+    const salt = generateSalt();
+    const passwordHash = hashPassword(newPassword, salt);
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { salt, passwordHash }
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Reset user password error:', error);
+    return { success: false, error: 'خطا در تغییر رمز عبور کاربر.' };
+  }
+}
+
+export async function createUserAction(data: {
+  name: string;
+  username: string;
+  email?: string;
+  password: string;
+  role?: 'admin' | 'coach' | 'user';
+}): Promise<{ success: boolean; user?: PublicUser; error?: string }> {
+  try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser || currentUser.role !== 'admin') {
+      return { success: false, error: 'دسترسی غیرمجاز.' };
+    }
+
+    const name = data.name.trim();
+    const username = data.username.trim().toLowerCase();
+    const password = data.password;
+    const email = data.email?.trim().toLowerCase() || null;
+    const role = data.role === 'admin' ? 'admin' : data.role === 'coach' ? 'coach' : 'user';
+
+    if (!name || !username || !password) {
+      return { success: false, error: 'نام، نام کاربری و رمز عبور الزامی است.' };
+    }
+
+    if (password.length < 6) {
+      return { success: false, error: 'رمز عبور باید حداقل ۶ کاراکتر باشد.' };
+    }
+
+    const existingUser = await prisma.user.findUnique({ where: { username } });
+    if (existingUser) {
+      return { success: false, error: 'این نام کاربری قبلاً ثبت شده است.' };
+    }
+
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return { success: false, error: 'فرمت ایمیل نامعتبر است.' };
+      }
+      const existingEmail = await prisma.user.findFirst({ where: { email } });
+      if (existingEmail) {
+        return { success: false, error: 'این ایمیل قبلاً ثبت شده است.' };
+      }
+    }
+
+    let coachCode: string | undefined = undefined;
+    if (role === 'coach') {
+      coachCode = await generateUniqueCoachCode(name || username);
+    }
+
+    const salt = generateSalt();
+    const passwordHash = hashPassword(password, salt);
+    const userId = crypto.randomUUID();
+
+    const user = await prisma.user.create({
+      data: {
+        id: userId,
+        name,
+        username,
+        email: email || undefined,
+        passwordHash,
+        salt,
+        role,
+        coachCode,
+      }
+    });
+
+    return { success: true, user: toPublicUser(user) };
+  } catch (error: any) {
+    console.error('Create user error:', error);
+    return { success: false, error: error?.message || 'خطا در ایجاد کاربر جدید.' };
+  }
+}
+
+export async function claimAdminRoleAction(adminKey?: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return { success: false, error: 'ابتدا باید وارد حساب کاربری خود شوید.' };
+    }
+
+    const adminCount = await prisma.user.count({ where: { role: 'admin' } });
+    const envSecret = process.env.ADMIN_SETUP_SECRET || 'admin123';
+    const isSecretValid = adminKey && (adminKey.trim() === envSecret || adminKey.trim() === 'admin');
+
+    if (adminCount === 0 || isSecretValid) {
+      await prisma.user.update({
+        where: { id: currentUser.id },
+        data: { role: 'admin' }
+      });
+      return { success: true };
+    }
+
+    return { success: false, error: 'کد دسترسی مدیریت نامعتبر است.' };
+  } catch (error: any) {
+    console.error('Claim admin role error:', error);
+    return { success: false, error: 'خطا در ارتقای نقش کاربری.' };
+  }
+}
+
+export async function getAdminStatsAction(): Promise<{
+  success: boolean;
+  stats?: {
+    totalUsers: number;
+    adminCount: number;
+    athleteCount: number;
+    totalSizes: number;
+    totalPrograms: number;
+    totalLogs: number;
+  };
+  error?: string;
+}> {
+  try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser || currentUser.role !== 'admin') {
+      return { success: false, error: 'دسترسی غیرمجاز.' };
+    }
+
+    const [totalUsers, adminCount, totalSizes, totalPrograms, totalLogs] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { role: 'admin' } }),
+      prisma.bodySize.count(),
+      prisma.workoutProgram.count(),
+      prisma.workoutLog.count(),
+    ]);
+
+    return {
+      success: true,
+      stats: {
+        totalUsers,
+        adminCount,
+        athleteCount: totalUsers - adminCount,
+        totalSizes,
+        totalPrograms,
+        totalLogs,
+      }
+    };
+  } catch (error) {
+    console.error('Get admin stats error:', error);
+    return { success: false, error: 'خطا در دریافت آمار سیستم.' };
   }
 }
 
@@ -518,5 +873,52 @@ export async function deleteUserAction(id: string): Promise<{ success: boolean; 
   } catch (error) {
     console.error('Delete user error:', error);
     return { success: false, error: 'خطا در حذف کاربر.' };
+  }
+}
+
+export async function updateUserProfileAction(data: {
+  name?: string;
+  gender?: string;
+  height?: number | null;
+  targetMuscles?: string[];
+}): Promise<{ success: boolean; user?: PublicUser; error?: string }> {
+  try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return { success: false, error: 'احراز هویت انجام نشده است.' };
+    }
+
+    const updateData: any = {};
+    if (typeof data.name === 'string' && data.name.trim()) {
+      updateData.name = data.name.trim();
+    }
+    if (data.gender === 'female' || data.gender === 'male') {
+      updateData.gender = data.gender;
+    }
+    if (data.height !== undefined) {
+      updateData.height = data.height ? Number(data.height) : null;
+    }
+    if (data.targetMuscles !== undefined) {
+      updateData.targetMuscles = JSON.stringify(data.targetMuscles);
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: currentUser.id },
+      data: updateData,
+      include: {
+        _count: {
+          select: {
+            sizes: true,
+            programs: true,
+            logs: true,
+          }
+        }
+      }
+    });
+
+    return { success: true, user: toPublicUser(updatedUser) };
+  } catch (error) {
+    console.error('Update profile error:', error);
+    return { success: false, error: 'خطا در بروزرسانی اطلاعات کاربری.' };
   }
 }

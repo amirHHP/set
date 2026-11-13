@@ -14,7 +14,8 @@ import {
   Menu,
   X,
   Settings,
-  Home
+  Home,
+  Award
 } from 'lucide-react';
 import styles from './Header.module.css';
 
@@ -43,7 +44,7 @@ export default function Header({ currentUser }: HeaderProps) {
   const navLinks = [
     { name: 'خانه', path: '/', icon: Home },
     { name: 'فروشگاه', path: '/shop', icon: ShoppingCart },
-    { name: 'ثبت اندازه‌ها', path: '/sizes', icon: Scale },
+    { name: 'پروفایل و آنالیز بدن', path: '/profile', icon: Scale },
     { name: 'برنامه ورزشی', path: '/workout', icon: Dumbbell },
     { name: 'وبلاگ تندرستی', path: '/blog', icon: BookOpen },
   ];
@@ -83,6 +84,18 @@ export default function Header({ currentUser }: HeaderProps) {
             );
           })}
 
+          {/* Coach Panel Link */}
+          {currentUser && (currentUser.role === 'coach' || currentUser.role === 'admin') && (
+            <Link
+              href="/coach"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`${styles.navLink} ${isActive('/coach') ? styles.activeLink : ''}`}
+            >
+              <Award size={18} />
+              <span>پنل مربی</span>
+            </Link>
+          )}
+
           {/* Admin Panel Link */}
           {currentUser && currentUser.role === 'admin' && (
             <Link
@@ -99,12 +112,18 @@ export default function Header({ currentUser }: HeaderProps) {
           <div className={styles.userMenu}>
             {currentUser ? (
               <>
-                <div className={styles.userInfo}>
+                <Link
+                  href="/profile"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={styles.userInfo}
+                  title="مشاهده پروفایل"
+                  style={{ textDecoration: 'none', cursor: 'pointer' }}
+                >
                   <span className={styles.userName}>{currentUser.name}</span>
                   <span className={styles.userRole}>
-                    {currentUser.role === 'admin' ? 'مدیر سیستم' : 'ورزشکار'}
+                    {currentUser.role === 'admin' ? 'مدیر سیستم' : currentUser.role === 'coach' ? 'مربی ورزشی' : 'ورزشکار'}
                   </span>
-                </div>
+                </Link>
                 <button onClick={handleLogout} className={styles.logoutBtn}>
                   <LogOut size={16} />
                   <span>خروج</span>

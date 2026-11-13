@@ -3,19 +3,21 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/app/actions/auth';
 import AdminPanelClient from '@/components/AdminPanelClient';
+import ClaimAdminCard from '@/components/ClaimAdminCard';
 import { getAiConfig } from '@/app/actions/settings';
 import { getProducts } from '@/app/actions/shop';
 
 export default async function AdminPage() {
   const currentUser = await getCurrentUser();
 
-  // Guard: Redirect to login or home if not authorized
+  // Guard: If not logged in, redirect to login
   if (!currentUser) {
-    redirect('/login');
+    redirect('/login?callbackUrl=/admin');
   }
 
+  // If logged in but not admin, show claim card
   if (currentUser.role !== 'admin') {
-    redirect('/');
+    return <ClaimAdminCard currentUser={currentUser} />;
   }
 
   // Fetch initial data on the server side
@@ -24,13 +26,13 @@ export default async function AdminPage() {
   const initialProducts = prodRes.success && prodRes.products ? prodRes.products : [];
 
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '10px 0 50px' }}>
+    <div style={{ maxWidth: '1240px', margin: '0 auto', padding: '10px 0 50px' }}>
       <div style={{ marginBottom: '32px' }}>
         <h1 style={{ fontSize: '2rem', fontWeight: '800', marginBottom: '8px', color: 'var(--primary)' }}>
           پنل مدیریت سیستم
         </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-          تنظیمات کلیدهای هوش مصنوعی، مدیریت کالاهای فروشگاه و کنترل کاربران سیستم
+          مدیریت کاربران رجیستر شده و وضعیت ورود، تنظیم کلیدهای ارائه‌دهندگان هوش مصنوعی و محصولات فروشگاه
         </p>
       </div>
 
