@@ -750,7 +750,11 @@ export default function AdminPanelClient({
                     <div>
                       <strong style={{ fontSize: '0.95rem', display: 'block', marginBottom: '4px' }}>{u.name}</strong>
                       <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                        نام کاربری: <code>{u.username}</code> | نقش:{' '}
+                        نام کاربری: <code>{u.username}</code>
+                        {u.email && (
+                          <> | ایمیل: <code style={{ direction: 'ltr' }}>{u.email}</code></>
+                        )}
+                        {' '}| نقش:{' '}
                         <span style={{ color: u.role === 'admin' ? 'var(--secondary)' : 'var(--text-main)', fontWeight: '700' }}>
                           {u.role === 'admin' ? 'مدیر سیستم' : 'ورزشکار'}
                         </span>
